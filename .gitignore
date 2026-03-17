@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.csv
+*.xlsx
+_analyze.js
+import-*.js
+build-*.js
+supabase-*.sql
+Data/

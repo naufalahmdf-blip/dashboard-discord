@@ -1,0 +1,15 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": null,
+  "functions": {
+    "api/admin/upload.js": { "maxDuration": 300 },
+    "api/admin/analyze.js": { "maxDuration": 300 },
+    "api/admin/manual.js": { "maxDuration": 60 },
+    "api/admin/analyze-complaints.js": { "maxDuration": 120 }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}
