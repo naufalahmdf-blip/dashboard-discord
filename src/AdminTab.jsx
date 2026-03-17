@@ -700,8 +700,8 @@ export default function AdminTab({ onSaved, token }) {
                 return { ...c, all_time_count: newMsgs.length, recent_count: 0, messages: newMsgs };
               });
               setCatRows(updatedCats);
+              // save() to complaint_categories also inserts complaint_messages
               await save('complaint_categories', updatedCats);
-
               const totalComp = updatedCats.reduce((s, c) => s + (c.messages?.length || 0), 0);
               addLog(`✓ ${totalComp} keluhan diklasifikasi ke ${updatedCats.length} kategori.`);
             } else {

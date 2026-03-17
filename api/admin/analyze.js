@@ -37,15 +37,26 @@ export default async function handler(req, res) {
       const batchFrom = batch[0];
       const batchTo = batch[batch.length - 1];
 
-      // Fetch messages for this batch from chat_messages
-      const { data: msgs, error: mErr } = await sb
-        .from('chat_messages')
-        .select('msg_datetime, username, content')
-        .gte('msg_datetime', batchFrom)
-        .lte('msg_datetime', batchTo + 'T23:59:59')
-        .neq('content', 'EMPTY')
-        .neq('content', '')
-        .limit(2000);
+      // Fetch ALL messages for this batch from chat_messages (no limit)
+      let msgs = [];
+      let offset = 0;
+      const PAGE = 5000;
+      while (true) {
+        const { data: page, error: pErr } = await sb
+          .from('chat_messages')
+          .select('msg_datetime, username, content')
+          .gte('msg_datetime', batchFrom)
+          .lte('msg_datetime', batchTo + 'T23:59:59')
+          .neq('content', 'EMPTY')
+          .neq('content', '')
+          .range(offset, offset + PAGE - 1);
+        if (pErr) { msgs = null; break; }
+        if (!page || page.length === 0) break;
+        msgs.push(...page);
+        if (page.length < PAGE) break;
+        offset += PAGE;
+      }
+      const mErr = msgs === null;
 
       if (mErr) {
         log.push(`⚠ ${batchFrom}→${batchTo}: fetch error: ${mErr.message}`);
@@ -68,26 +79,67 @@ export default async function handler(req, res) {
         byDate[date].push({ u: m.username, c: m.content });
       });
 
-      // Build prompt with daily breakdown (include usernames)
+      // Build prompt with daily breakdown — representative sample per day
       const dateBreakdown = batch.map(d => {
         const dateMsgs = byDate[d] || [];
-        const sample = dateMsgs.slice(0, 100).map(m => `[${m.u}] ${m.c}`).join('\n');
-        return `=== ${d} (${dateMsgs.length} messages) ===\n${sample || '(no messages)'}`;
+        // Sample: first 50 + last 50 + random 100 from middle for variety
+        let sample;
+        if (dateMsgs.length <= 200) {
+          sample = dateMsgs;
+        } else {
+          const first = dateMsgs.slice(0, 50);
+          const last = dateMsgs.slice(-50);
+          const middle = dateMsgs.slice(50, -50);
+          const shuffled = middle.sort(() => Math.random() - 0.5).slice(0, 100);
+          sample = [...first, ...shuffled, ...last];
+        }
+        const lines = sample.map(m => `[${m.u}] ${m.c}`).join('\n');
+        return `=== ${d} (${dateMsgs.length} messages, showing ${sample.length}) ===\n${lines || '(no messages)'}`;
       }).join('\n\n');
 
       const prompt = `Kamu adalah analis sentimen & topik komunitas Discord trading crypto Indonesia bernama TWS (The Wolf of Street).
 
 TUGAS 1 - SENTIMEN: hitung PERSENTASE pesan yang POSITIF dan NEGATIF terhadap TWS/Suli (founder).
+Hitung dari SEMUA pesan (total messages count tertulis di header), bukan hanya sample. Sample hanya untuk referensi konteks.
 
-CONTOH POSITIF (support/apresiasi TWS/Suli):
-- "Semangat sampai 2030", "Congrats ikut call suli winstreak", "salut ko jonathan konsisten"
-- "tws banyak bantu gue", "tq king sl pindah BEP", "Suli lagi menyala"
+=== CONTOH KALIMAT POSITIF (support/apresiasi TWS/Suli) ===
+- "Semangat sampai 2030"
+- "Gw masih hold soalnya percaya fundamental"
+- "Congrats yang sudah tetap setia ikut call suli, 3 calls winstreak"
+- "tws banyak bantu gue juga buat refine cara baca market"
+- "tq king sl pindah BEP"
+- "Suli lagi menyala"
+- "salut ama ko jonathan, sisi positifnya konsisten"
+- "harus bersyukur masi ada yang mau ngajarin"
+- "Udah ges gua udah puas klo sul minta maaf"
+- "Gw udh brapa x kena SL Suli ampe jiper, tp ya thats life, gak tiap x Suli call i jg ikut, its our choice"
+- "Mangats gez"
+- "stay in cash teman-teman, lihat war dan krisis kali ini sebagai peluang"
+- "nice setup bro, roi nya gacor"
+- "Mantap king"
 
-CONTOH NEGATIF (keluhan/kecewa ke TWS/Suli):
-- "Suli ngilang pas bear", "mending vote refund", "Jualan kelas jualan taik"
-- "dari OTL udah invalid terus", "korban 150 juta", "bayar mahal malah members yg perform"
+=== CONTOH KALIMAT NEGATIF (keluhan/kecewa ke TWS/Suli) ===
+- "Waktu bull gembar gembor, live publik 2x seminggu, marketing kenceng, Sekarang ngilang. Parah banget"
+- "king suli afk? tinggal ngitung waktu, semua fitur yg di janjiin gagal deliver satu per satu"
+- "mending vote refund aja dibanding kalian sakit hati terus"
+- "Jualan kelas jualan taik"
+- "dari OTL udah invalid terus wkwkwk dari btc 100,90,80 skrng di undur lagi jadi 70 sampai 50"
+- "Aku juga korban 150"
+- "bayar mahal mahal malah members nya yg perform"
+- "Suli ngilang pas bear market"
+- "Bukannya evaluasi, malah ngatain member"
+- "dngar dngar kelas marketing bree cara jualan kelas dengan hope"
+- "Duit member Di pake buat jajan lcc"
+- "Postingan2 kek gini tampil mulu Yg fomo langsung asal masuk padahal narasi nya masi bearish"
+- "call lah sul, sepi banget"
+- "suli gapernah update jir kemana ya?"
+- "Katanya bukan bear tapi short sampe 50k, Lalu namanya apa ketua"
+- "bnyak bre lulusan sini, udh buka clas juga, polanya kek ketua"
+- "Niat hati masuk kelas mau profit malah banyak minusnya"
+- "Gila yaa bayar mahal mahal malah members nya yg perform"
 
-NETRAL (jangan dihitung): diskusi market biasa, analisis teknikal, meme/basa-basi
+=== NETRAL (jangan dihitung sebagai pos/neg) ===
+Diskusi market biasa, analisis teknikal, sharing chart, meme/basa-basi, obrolan non-TWS
 
 TUGAS 2 - TOPIK: identifikasi 3-5 topik paling dominan per hari.
 
@@ -103,22 +155,23 @@ Analisis SETIAP hari dan output JSON:
       "pos": 0.5,
       "neg": 1.2,
       "topics": ["📈 Bitcoin rally ke 100K", "💰 Diskusi altcoin season", "⚠️ Keluhan Suli AFK"],
-      "note": "singkat 1 kalimat",
-      "pos_examples": [{"u": "username", "c": "isi pesan positif"}],
-      "neg_examples": [{"u": "username", "c": "isi pesan negatif"}]
+      "note": "singkat 1 kalimat rangkuman hari ini",
+      "pos_examples": [{"u": "username", "c": "kutipan pesan positif persis dari chat"}],
+      "neg_examples": [{"u": "username", "c": "kutipan pesan negatif persis dari chat"}]
     }
   ]
 }
 
-Ketentuan:
-- pos = % pesan POSITIF terhadap TWS/Suli (biasanya 0.0 - 5.0)
-- neg = % pesan NEGATIF terhadap TWS/Suli (biasanya 0.0 - 5.0)
+PENTING:
+- pos = % pesan POSITIF terhadap TWS/Suli dari TOTAL pesan hari itu (biasanya 0.0 - 5.0, bisa lebih tinggi kalau memang banyak)
+- neg = % pesan NEGATIF terhadap TWS/Suli dari TOTAL pesan hari itu (biasanya 0.0 - 5.0, bisa lebih tinggi)
+- HITUNG TELITI: pos dan neg HARUS berbeda setiap hari sesuai isi chat, JANGAN copy-paste angka yang sama
 - topics = array of 3-5 topik dominan (format: "emoji Judul topik"), bahasa Indonesia
-- pos_examples = max 5 contoh pesan positif (kutip persis dari chat, sertakan username)
-- neg_examples = max 5 contoh pesan negatif (kutip persis dari chat, sertakan username)
+- pos_examples = max 5 contoh pesan positif (KUTIP PERSIS dari chat yang ditampilkan, sertakan username)
+- neg_examples = max 5 contoh pesan negatif (KUTIP PERSIS dari chat yang ditampilkan, sertakan username)
 - Jika tidak ada pesan, pos=0, neg=0, topics=[], pos_examples=[], neg_examples=[]
-- Chat market biasa = NETRAL sentimen, tapi TETAP masuk topics
-- Jawab HANYA dengan JSON`;
+- Chat market biasa = NETRAL, tapi TETAP masuk topics
+- Jawab HANYA dengan JSON, tidak ada teks lain`;
 
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
