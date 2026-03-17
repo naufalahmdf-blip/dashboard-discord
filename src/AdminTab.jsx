@@ -216,15 +216,39 @@ function ManualDataSection({ onSaved, token }) {
   async function runComplaintAnalysis() {
     if (!catRows.length) { setComplaintLog(['⚠ Tambah kategori dulu sebelum analisis.']); return; }
     setAnalyzingComplaints(true);
-    setComplaintLog(['Filtering by keywords (server-side)...']);
+    setComplaintLog(['Mengambil pesan dari database chat_messages...']);
 
     try {
+      // Fetch messages from chat_messages table (same source as sentiment analysis)
+      const fetchRes = await fetch('/api/admin/chat-data?action=fetch-messages', { headers: authHeaders });
+      const fetchJson = await fetchRes.json();
+      if (!fetchRes.ok || !fetchJson.messages) {
+        setComplaintLog(prev => [...prev, `⚠ Gagal ambil data: ${fetchJson.error || 'Unknown error'}`]);
+        setAnalyzingComplaints(false);
+        return;
+      }
+      const allMessages = fetchJson.messages;
+      setComplaintLog(prev => [...prev, `Total ${allMessages.length} pesan dari database.`]);
+
+      const filtered = allMessages.filter(m => {
+        const lower = (m.content || '').toLowerCase();
+        return COMPLAINT_KEYWORDS.some(kw => lower.includes(kw));
+      });
+      setComplaintLog(prev => [...prev, `${filtered.length} pesan terdeteksi mengandung keluhan.`]);
+
+      if (filtered.length === 0) {
+        setComplaintLog(prev => [...prev, '⚠ Tidak ada pesan keluhan ditemukan.']);
+        setAnalyzingComplaints(false);
+        return;
+      }
+
+      setComplaintLog(prev => [...prev, `Mengirim ${Math.min(filtered.length, 400)} pesan ke AI...`]);
       const categories = catRows.map(c => ({ theme: c.theme, color: c.color || '#6366f1' }));
 
       const res = await fetch('/api/admin/analyze-complaints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ categories, keywords: COMPLAINT_KEYWORDS }),
+        body: JSON.stringify({ categories, messages: filtered }),
       });
       const json = await res.json();
 
@@ -233,8 +257,6 @@ function ManualDataSection({ onSaved, token }) {
         setAnalyzingComplaints(false);
         return;
       }
-
-      setComplaintLog(prev => [...prev, `${json.filtered || 0} pesan dikirim ke AI.`]);
 
       const aiMap = {};
       json.categories.forEach(c => { aiMap[c.theme] = c; });
@@ -247,14 +269,19 @@ function ManualDataSection({ onSaved, token }) {
           content: m.content || '',
           is_recent: false,
         }));
-        return { ...c, all_time_count: newMsgs.length, recent_count: 0, messages: newMsgs };
+        return {
+          ...c,
+          all_time_count: newMsgs.length,
+          recent_count: 0,
+          messages: newMsgs,
+        };
       });
       setCatRows(updatedCats);
 
+      // Auto-save to database
       setComplaintLog(prev => [...prev, '✓ Analisis selesai! Menyimpan ke database...']);
       await save('complaint_categories', updatedCats);
-      const totalComp = updatedCats.reduce((s, c) => s + (c.messages?.length || 0), 0);
-      setComplaintLog(prev => [...prev, `✓ ${totalComp} keluhan tersimpan!`]);
+      setComplaintLog(prev => [...prev, '✓ Data complaint tersimpan!']);
       onSaved?.();
     } catch (err) {
       setComplaintLog(prev => [...prev, `✗ ${err.message}`]);
@@ -632,43 +659,62 @@ export default function AdminTab({ onSaved, token }) {
 
       await runAnalysisBatched(fromDate, toDate);
 
-      // Step 2: Complaint analysis (server-side filtering)
-      if (catRows.length > 0 && COMPLAINT_KEYWORDS.length > 0) {
+      // Step 2: Complaint analysis
+      if (catRows.length > 0) {
         addLog('');
         addLog('=== Step 2: Complaint Analysis ===');
-        addLog(`Filtering by ${COMPLAINT_KEYWORDS.length} keywords (server-side)...`);
+        addLog('Mengambil pesan dari chat_messages...');
 
-        const categories = catRows.map(c => ({ theme: c.theme, color: c.color || '#6366f1' }));
+        const fetchRes = await fetch('/api/admin/chat-data?action=fetch-messages', { headers: authHeaders });
+        const fetchJson = await fetchRes.json();
+        if (fetchRes.ok && fetchJson.messages) {
+          const allMessages = fetchJson.messages;
+          addLog(`Total ${allMessages.length.toLocaleString()} pesan.`);
 
-        const compRes = await fetch('/api/admin/analyze-complaints', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders },
-          body: JSON.stringify({ categories, keywords: COMPLAINT_KEYWORDS }),
-        });
-        const compJson = await compRes.json();
-
-        if (compRes.ok && compJson.ok) {
-          addLog(`${compJson.filtered || 0} pesan dikirim ke AI untuk klasifikasi.`);
-          const aiMap = {};
-          compJson.categories.forEach(c => { aiMap[c.theme] = c; });
-          const updatedCats = catRows.map(c => {
-            const ai = aiMap[c.theme];
-            if (!ai) return c;
-            const newMsgs = (ai.messages || []).map(m => ({
-              msg_date: m.date || '', username: m.username || '', content: m.content || '', is_recent: false,
-            }));
-            return { ...c, all_time_count: newMsgs.length, recent_count: 0, messages: newMsgs };
+          const filtered = allMessages.filter(m => {
+            const lower = (m.content || '').toLowerCase();
+            return COMPLAINT_KEYWORDS.some(kw => lower.includes(kw));
           });
-          setCatRows(updatedCats);
-          await save('complaint_categories', updatedCats);
+          addLog(`${filtered.length} pesan terdeteksi mengandung keluhan.`);
 
-          const totalComp = updatedCats.reduce((s, c) => s + (c.messages?.length || 0), 0);
-          addLog(`✓ ${totalComp} keluhan diklasifikasi ke ${updatedCats.length} kategori.`);
+          if (filtered.length > 0) {
+            addLog(`Mengirim ${Math.min(filtered.length, 400)} pesan ke AI...`);
+            const categories = catRows.map(c => ({ theme: c.theme, color: c.color || '#6366f1' }));
+
+            const compRes = await fetch('/api/admin/analyze-complaints', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders },
+              body: JSON.stringify({ categories, messages: filtered }),
+            });
+            const compJson = await compRes.json();
+
+            if (compRes.ok && compJson.ok) {
+              const aiMap = {};
+              compJson.categories.forEach(c => { aiMap[c.theme] = c; });
+              const updatedCats = catRows.map(c => {
+                const ai = aiMap[c.theme];
+                if (!ai) return c;
+                const newMsgs = (ai.messages || []).map(m => ({
+                  msg_date: m.date || '', username: m.username || '', content: m.content || '', is_recent: false,
+                }));
+                return { ...c, all_time_count: newMsgs.length, recent_count: 0, messages: newMsgs };
+              });
+              setCatRows(updatedCats);
+              await save('complaint_categories', updatedCats);
+
+              const totalComp = updatedCats.reduce((s, c) => s + (c.messages?.length || 0), 0);
+              addLog(`✓ ${totalComp} keluhan diklasifikasi ke ${updatedCats.length} kategori.`);
+            } else {
+              addLog(`⚠ Complaint analysis error: ${compJson.error || 'Unknown'}`);
+            }
+          } else {
+            addLog('Tidak ada keluhan ditemukan.');
+          }
         } else {
-          addLog(`⚠ Complaint analysis error: ${compJson.error || 'Unknown'}`);
+          addLog(`⚠ Gagal ambil pesan: ${fetchJson.error || 'Unknown'}`);
         }
       } else {
-        addLog('⏭ Complaint analysis dilewati (belum ada kategori/keywords).');
+        addLog('⏭ Complaint analysis dilewati (belum ada kategori).');
       }
 
       addLog('');

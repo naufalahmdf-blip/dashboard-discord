@@ -1,10 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import { requireAdmin } from '../../lib/auth.js';
 
-const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// Context examples from curated positive/negative dataset
 const CONTEXT_EXAMPLES = `
 CONTOH NEGATIF (KELUHAN ke TWS/Suli — HARUS diklasifikasi):
 - "Waktu bull gembar gembor, live publik 2x seminggu, marketing kenceng, Sekarang ngilang"
@@ -15,15 +14,26 @@ CONTOH NEGATIF (KELUHAN ke TWS/Suli — HARUS diklasifikasi):
 - "Niat hati masuk kelas mau profit malah banyak minusnya"
 - "Jualan kelas jualan taik"
 - "Gila yaa bayar mahal mahal malah members nya yg perform"
+- "Bruh, suli bilang kalo bear dia akan kasih tau langsung membernya, tapi skrg dia cashout 50% aja diem diem"
 - "Aku juga korban 150"
+- "Duit member Di pake buat jajan lcc"
+- "Jualan hope kepada orang miskin adalah bisnis yang mumpuni"
 - "suli gapernah update jir kemana ya?"
+- "call lah sul, sepi banget"
+- "bnyak bre lulusan sini, udh buka clas juga, polanya kek ketua"
 
 CONTOH POSITIF/NETRAL (JANGAN diklasifikasi sebagai keluhan):
 - "Semangat sampai 2030"
 - "Gw masih hold soalnya percaya fundamental"
+- "hype strong"
 - "Congrats yang sudah tetap setia ikut call suli, 3 calls winstreak"
 - "salut ama ko jonathan, sisi positifnya konsisten"
+- "tws banyak bantu gue juga buat refine cara baca market"
+- "tq king sl pindah BEP"
+- "Mantap king"
+- "harus bersyukur masi ada yang mau ngajarin"
 - Diskusi market biasa (BTC dump, pump, short, long)
+- Analisis teknikal tanpa keluhan
 `.trim();
 
 export default async function handler(req, res) {
@@ -31,54 +41,14 @@ export default async function handler(req, res) {
   const user = requireAdmin(req, res);
   if (!user) return;
 
-  const { categories, keywords, messages: clientMessages } = req.body || {};
-  if (!categories?.length) {
-    return res.status(400).json({ error: 'categories required' });
+  const { categories, messages } = req.body || {};
+  if (!categories?.length || !messages?.length) {
+    return res.status(400).json({ error: 'categories and messages required' });
   }
 
   try {
-    let sample;
-
-    if (clientMessages && clientMessages.length > 0) {
-      // Messages passed from frontend (legacy)
-      sample = clientMessages.slice(0, 400);
-    } else if (keywords && keywords.length > 0) {
-      // Server-side: fetch from chat_messages and filter by keywords
-      const log = [];
-      let allFiltered = [];
-
-      // Use SQL ILIKE to filter server-side (much faster than fetching all)
-      const orFilter = keywords.slice(0, 20).map(kw => `content.ilike.%${kw}%`).join(',');
-
-      const { data: msgs, error } = await sb
-        .from('chat_messages')
-        .select('username, msg_datetime, content')
-        .or(orFilter)
-        .neq('content', 'EMPTY')
-        .neq('content', '')
-        .order('msg_datetime', { ascending: false })
-        .limit(1000);
-
-      if (error) {
-        return res.status(500).json({ error: `Fetch error: ${error.message}` });
-      }
-
-      allFiltered = (msgs || []).map(m => ({
-        date: m.msg_datetime ? m.msg_datetime.split('T')[0] : '',
-        username: m.username || '',
-        content: m.content || '',
-      }));
-
-      sample = allFiltered.slice(0, 400);
-    } else {
-      return res.status(400).json({ error: 'keywords or messages required' });
-    }
-
-    if (sample.length === 0) {
-      return res.json({ ok: true, categories: categories.map(c => ({ theme: c.theme, messages: [] })), filtered: 0 });
-    }
-
     const catList = categories.map((c, i) => `${i + 1}. ${c.theme}`).join('\n');
+    const sample = messages.slice(0, 400);
     const msgText = sample.map((m, i) =>
       `[${i + 1}] ${m.date} @${m.username}: ${m.content}`
     ).join('\n');
@@ -123,19 +93,23 @@ PENTING:
     const result = JSON.parse(completion.choices[0].message.content);
     if (!result.classifications) return res.status(500).json({ error: 'AI response missing classifications' });
 
+    // Map index → category name
     const classMap = {};
     result.classifications.forEach(c => { classMap[c.index] = c.category; });
 
+    // Group messages by category
     const grouped = {};
     categories.forEach(c => { grouped[c.theme] = []; });
 
     for (let i = 0; i < sample.length; i++) {
       const cat = classMap[i + 1];
       if (cat && grouped[cat] !== undefined) {
+        const msg = sample[i];
         grouped[cat].push({
-          date: sample[i].date || '',
-          username: sample[i].username || '',
-          content: sample[i].content || '',
+          date: msg.date || '',
+          username: msg.username || '',
+          content: msg.content || '',
+          is_recent: false,
         });
       }
     }
@@ -145,7 +119,7 @@ PENTING:
       messages: grouped[c.theme] || [],
     }));
 
-    res.json({ ok: true, categories: categoriesResult, filtered: sample.length });
+    res.json({ ok: true, categories: categoriesResult });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
