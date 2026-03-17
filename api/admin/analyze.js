@@ -59,7 +59,7 @@ export default async function handler(req, res) {
       const mErr = msgs === null;
 
       if (mErr) {
-        log.push(`⚠ ${batchFrom}→${batchTo}: fetch error: ${mErr.message}`);
+        log.push(`⚠ ${batchFrom}→${batchTo}: fetch error`);
         continue;
       }
       if (!msgs || msgs.length === 0) {
