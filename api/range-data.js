@@ -49,6 +49,9 @@ export default async function handler(req, res) {
         users: Number(r.users),
         pos: Number(sent.pos) || 0,
         neg: Number(sent.neg) || 0,
+        pos_examples: sent.pos_examples || [],
+        neg_examples: sent.neg_examples || [],
+        note: sent.note || '',
       };
     });
 

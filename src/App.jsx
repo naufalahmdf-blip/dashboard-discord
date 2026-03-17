@@ -247,7 +247,7 @@ export default function App({ token, role, onLogout }) {
   };
 
   // ---- Raw daily data ----
-  const rawDaily = (dailyStats || []).map(d => ({ label: fmtDay(d.stat_date), key: d.stat_date, stat_date: d.stat_date, messages: d.messages, users: d.users, pos: d.pos || 0, neg: d.neg || 0 }));
+  const rawDaily = (dailyStats || []).map(d => ({ label: fmtDay(d.stat_date), key: d.stat_date, stat_date: d.stat_date, messages: d.messages, users: d.users, pos: d.pos || 0, neg: d.neg || 0, pos_examples: d.pos_examples || [], neg_examples: d.neg_examples || [], note: d.note || '' }));
   const rawSuliDaily = (suliDaily || []).map(d => ({ label: fmtDay(d.stat_date), key: d.stat_date, stat_date: d.stat_date, msgs: d.msgs }));
   const rawJonDaily = (jonDaily || []).map(d => ({ label: fmtDay(d.stat_date), key: d.stat_date, stat_date: d.stat_date, msgs: d.msgs }));
 
@@ -540,6 +540,50 @@ export default function App({ token, role, onLogout }) {
               </div>
             ))}
           </div>
+
+          {/* Sentiment Detail: examples from daily data */}
+          {(() => {
+            const daysWithSentiment = rawDaily.filter(d => (d.pos > 0 || d.neg > 0) && ((d.pos_examples && d.pos_examples.length > 0) || (d.neg_examples && d.neg_examples.length > 0)));
+            if (daysWithSentiment.length === 0) return null;
+            // Collect all examples across days
+            const allNeg = daysWithSentiment.flatMap(d => (d.neg_examples || []).map(e => ({ ...e, date: d.stat_date })));
+            const allPos = daysWithSentiment.flatMap(d => (d.pos_examples || []).map(e => ({ ...e, date: d.stat_date })));
+            const totalNeg = allNeg.length;
+            const totalPos = allPos.length;
+            return (<>
+              <Ti sub={`${totalNeg} pesan negatif & ${totalPos} pesan positif terdeteksi oleh AI`}>Sentiment Detail</Ti>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {/* Negative examples */}
+                <div style={{ background: '#1a0a0a', border: '1px solid #7f1d1d', borderRadius: 10, padding: 14, maxHeight: 400, overflowY: 'auto' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', marginBottom: 8 }}>Pesan Negatif ({totalNeg})</div>
+                  {allNeg.slice(0, 30).map((e, i) => (
+                    <div key={i} style={{ borderBottom: '1px solid #2a1515', padding: '6px 0', fontSize: 11 }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
+                        <span style={{ color: '#f87171', fontWeight: 600 }}>@{e.u}</span>
+                        <span style={{ color: '#6b7280' }}>{fmtDay(e.date)}</span>
+                      </div>
+                      <div style={{ color: '#d1d5db' }}>{e.c}</div>
+                    </div>
+                  ))}
+                  {totalNeg === 0 && <div style={{ color: '#6b7280', fontSize: 11 }}>Tidak ada pesan negatif</div>}
+                </div>
+                {/* Positive examples */}
+                <div style={{ background: '#0a1a0a', border: '1px solid #14532d', borderRadius: 10, padding: 14, maxHeight: 400, overflowY: 'auto' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e', marginBottom: 8 }}>Pesan Positif ({totalPos})</div>
+                  {allPos.slice(0, 30).map((e, i) => (
+                    <div key={i} style={{ borderBottom: '1px solid #152a15', padding: '6px 0', fontSize: 11 }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
+                        <span style={{ color: '#4ade80', fontWeight: 600 }}>@{e.u}</span>
+                        <span style={{ color: '#6b7280' }}>{fmtDay(e.date)}</span>
+                      </div>
+                      <div style={{ color: '#d1d5db' }}>{e.c}</div>
+                    </div>
+                  ))}
+                  {totalPos === 0 && <div style={{ color: '#6b7280', fontSize: 11 }}>Tidak ada pesan positif</div>}
+                </div>
+              </div>
+            </>);
+          })()}
 
           <Ti sub="Daily sentiment terhadap TWS/Suli (AI-analyzed)">Sentiment Trend</Ti>
           {isDailyView && S.every(d => d.pos === 0 && d.neg === 0) && (

@@ -701,6 +701,7 @@ export default function AdminTab({ onSaved, token }) {
               });
               setCatRows(updatedCats);
               await save('complaint_categories', updatedCats);
+
               const totalComp = updatedCats.reduce((s, c) => s + (c.messages?.length || 0), 0);
               addLog(`✓ ${totalComp} keluhan diklasifikasi ke ${updatedCats.length} kategori.`);
             } else {

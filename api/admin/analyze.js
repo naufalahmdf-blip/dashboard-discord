@@ -60,18 +60,18 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // Group messages by date
+      // Group messages by date (with username)
       const byDate = {};
       msgs.forEach(m => {
         const date = m.msg_datetime.split('T')[0];
         if (!byDate[date]) byDate[date] = [];
-        byDate[date].push(m.content);
+        byDate[date].push({ u: m.username, c: m.content });
       });
 
-      // Build prompt with daily breakdown
+      // Build prompt with daily breakdown (include usernames)
       const dateBreakdown = batch.map(d => {
         const dateMsgs = byDate[d] || [];
-        const sample = dateMsgs.slice(0, 100).join('\n');
+        const sample = dateMsgs.slice(0, 100).map(m => `[${m.u}] ${m.c}`).join('\n');
         return `=== ${d} (${dateMsgs.length} messages) ===\n${sample || '(no messages)'}`;
       }).join('\n\n');
 
@@ -103,7 +103,9 @@ Analisis SETIAP hari dan output JSON:
       "pos": 0.5,
       "neg": 1.2,
       "topics": ["📈 Bitcoin rally ke 100K", "💰 Diskusi altcoin season", "⚠️ Keluhan Suli AFK"],
-      "note": "singkat 1 kalimat"
+      "note": "singkat 1 kalimat",
+      "pos_examples": [{"u": "username", "c": "isi pesan positif"}],
+      "neg_examples": [{"u": "username", "c": "isi pesan negatif"}]
     }
   ]
 }
@@ -112,7 +114,9 @@ Ketentuan:
 - pos = % pesan POSITIF terhadap TWS/Suli (biasanya 0.0 - 5.0)
 - neg = % pesan NEGATIF terhadap TWS/Suli (biasanya 0.0 - 5.0)
 - topics = array of 3-5 topik dominan (format: "emoji Judul topik"), bahasa Indonesia
-- Jika tidak ada pesan, pos=0, neg=0, topics=[]
+- pos_examples = max 5 contoh pesan positif (kutip persis dari chat, sertakan username)
+- neg_examples = max 5 contoh pesan negatif (kutip persis dari chat, sertakan username)
+- Jika tidak ada pesan, pos=0, neg=0, topics=[], pos_examples=[], neg_examples=[]
 - Chat market biasa = NETRAL sentimen, tapi TETAP masuk topics
 - Jawab HANYA dengan JSON`;
 
@@ -134,10 +138,13 @@ Ketentuan:
         const pos = parseFloat(day.pos) || 0;
         const neg = parseFloat(day.neg) || 0;
         const topics = Array.isArray(day.topics) ? day.topics : [];
+        const pos_examples = Array.isArray(day.pos_examples) ? day.pos_examples.slice(0, 5) : [];
+        const neg_examples = Array.isArray(day.neg_examples) ? day.neg_examples.slice(0, 5) : [];
+        const note = day.note || '';
 
         const { error: e1 } = await sb
           .from('sentiment_daily')
-          .upsert({ stat_date: day.date, pos, neg }, { onConflict: 'stat_date' });
+          .upsert({ stat_date: day.date, pos, neg, pos_examples, neg_examples, note }, { onConflict: 'stat_date' });
         if (e1) {
           log.push(`⚠ ${day.date}: sentiment update failed: ${e1.message}`);
         }
