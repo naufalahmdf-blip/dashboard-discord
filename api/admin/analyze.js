@@ -209,7 +209,7 @@ Analisis SETIAP hari dan output JSON:
     {
       "date": "YYYY-MM-DD",
       "pos_count": 3,
-      "neg_count": 1,
+      "neg_count": 2,
       "topics": ["📈 Bitcoin rally ke 100K", "💰 Diskusi altcoin season", "⚠️ Keluhan Suli AFK"],
       "note": "singkat 1 kalimat rangkuman hari ini",
       "pos_examples": [{"u": "username", "c": "kutipan pesan positif persis dari chat"}],
