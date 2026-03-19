@@ -223,7 +223,7 @@ PENTING — BACA BAIK-BAIK:
 - neg = % pesan yang KELUHAN/KECEWA ke TWS/Suli/Jonathan/komunitas dari TOTAL pesan hari itu. HARUS tentang TWS/Suli.
 - Diskusi market biasa (hype, pump, TA, profit trading sendiri) = NETRAL, bukan positif.
 - POSITIF biasanya LEBIH BESAR dari NEGATIF karena member yang support lebih banyak dari yang complain.
-- RANGE REALISTIS: pos biasanya 0.5-3%, neg biasanya 0-1.5%. Hari tanpa drama: pos 0.5-2%, neg 0-0.3%.
+- HARD LIMIT: pos MAKSIMAL 5.0%, neg MAKSIMAL 5.0%. Tidak boleh melebihi 5%. Biasanya pos 0.5-3%, neg 0-1.5%. Hari tanpa drama: pos 0.5-2%, neg 0-0.3%.
 - HITUNG TELITI: pos dan neg HARUS berbeda setiap hari sesuai isi chat, JANGAN copy-paste angka yang sama
 - POSITIF = apresiasi/support/terima kasih SPESIFIK ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas
 - NEGATIF = keluhan/kecewa/serang SPESIFIK ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas
@@ -252,8 +252,8 @@ PENTING — BACA BAIK-BAIK:
 
       // Update sentiment_daily and daily_topics for each day
       for (const day of result.days) {
-        const pos = parseFloat(day.pos) || 0;
-        const neg = parseFloat(day.neg) || 0;
+        const pos = Math.min(parseFloat(day.pos) || 0, 5.0);
+        const neg = Math.min(parseFloat(day.neg) || 0, 5.0);
         const topics = Array.isArray(day.topics) ? day.topics : [];
         const pos_examples = Array.isArray(day.pos_examples) ? day.pos_examples.slice(0, 5) : [];
         const neg_examples = Array.isArray(day.neg_examples) ? day.neg_examples.slice(0, 5) : [];
