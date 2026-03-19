@@ -99,8 +99,8 @@ export default async function handler(req, res) {
 
       const prompt = `Kamu adalah analis sentimen & topik komunitas Discord trading crypto Indonesia bernama TWS (The Wolf of Street).
 
-TUGAS 1 - SENTIMEN: hitung PERSENTASE pesan yang POSITIF dan NEGATIF terhadap TWS/Suli/komunitas.
-Hitung dari SEMUA pesan (total messages count tertulis di header), bukan hanya sample. Sample hanya untuk referensi konteks.
+TUGAS 1 - SENTIMEN: HITUNG JUMLAH pesan yang POSITIF dan NEGATIF terhadap TWS/Suli/komunitas dari pesan-pesan yang ditampilkan.
+HITUNG SATU PER SATU dari pesan yang ditampilkan. Output jumlah (angka bulat), BUKAN persentase.
 
 DEFINISI PENTING:
 - POSITIF = pesan yang SECARA SPESIFIK apresiasi/support/terima kasih ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas. HARUS ada kaitan dengan TWS/Suli/komunitas.
@@ -208,8 +208,8 @@ Analisis SETIAP hari dan output JSON:
   "days": [
     {
       "date": "YYYY-MM-DD",
-      "pos": 0.5,
-      "neg": 1.2,
+      "pos_count": 3,
+      "neg_count": 1,
       "topics": ["📈 Bitcoin rally ke 100K", "💰 Diskusi altcoin season", "⚠️ Keluhan Suli AFK"],
       "note": "singkat 1 kalimat rangkuman hari ini",
       "pos_examples": [{"u": "username", "c": "kutipan pesan positif persis dari chat"}],
@@ -219,20 +219,18 @@ Analisis SETIAP hari dan output JSON:
 }
 
 PENTING — BACA BAIK-BAIK:
-- pos = % pesan yang APRESIASI/SUPPORT TWS/Suli/Jonathan/komunitas dari TOTAL pesan hari itu. HARUS tentang TWS/Suli.
-- neg = % pesan yang KELUHAN/KECEWA ke TWS/Suli/Jonathan/komunitas dari TOTAL pesan hari itu. HARUS tentang TWS/Suli.
-- Diskusi market biasa (hype, pump, TA, profit trading sendiri) = NETRAL, bukan positif.
-- POSITIF biasanya LEBIH BESAR dari NEGATIF karena member yang support lebih banyak dari yang complain.
-- HARD LIMIT: pos MAKSIMAL 5.0%, neg MAKSIMAL 5.0%. Tidak boleh melebihi 5%. Biasanya pos 0.5-3%, neg 0-1.5%. Hari tanpa drama: pos 0.5-2%, neg 0-0.3%.
-- HITUNG TELITI: pos dan neg HARUS berbeda setiap hari sesuai isi chat, JANGAN copy-paste angka yang sama
+- pos_count = JUMLAH pesan positif yang kamu temukan dari pesan yang DITAMPILKAN. Angka bulat (integer).
+- neg_count = JUMLAH pesan negatif yang kamu temukan dari pesan yang DITAMPILKAN. Angka bulat (integer).
+- HITUNG SATU PER SATU: baca setiap pesan, tentukan positif/negatif/netral, lalu jumlahkan.
+- pos_count dan neg_count HARUS konsisten dengan jumlah pos_examples dan neg_examples (tidak boleh count 10 tapi examples cuma 2).
 - POSITIF = apresiasi/support/terima kasih SPESIFIK ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas
 - NEGATIF = keluhan/kecewa/serang SPESIFIK ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas
 - Optimisme market, hype coin, profit dari trading sendiri = NETRAL, BUKAN positif
 - topics = array of 3-5 topik dominan (format: "emoji Judul topik"), bahasa Indonesia
-- pos_examples = max 5 contoh pesan positif (KUTIP PERSIS dari chat, sertakan username). HARUS tentang TWS/Suli/komunitas.
-- neg_examples = max 5 contoh pesan negatif (KUTIP PERSIS dari chat, sertakan username). HARUS tentang TWS/Suli/komunitas.
-- JANGAN masukkan pesan yang sama ke examples di hari berbeda. Setiap hari HARUS contoh UNIK dari chat hari itu saja.
-- Jika hari itu tidak ada pesan tentang TWS/Suli → pos=0, neg=0, pos_examples=[], neg_examples=[]
+- pos_examples = SEMUA pesan positif yang kamu temukan (KUTIP PERSIS dari chat, sertakan username). HARUS tentang TWS/Suli/komunitas.
+- neg_examples = SEMUA pesan negatif yang kamu temukan (KUTIP PERSIS dari chat, sertakan username). HARUS tentang TWS/Suli/komunitas.
+- pos_count HARUS SAMA DENGAN jumlah item di pos_examples. neg_count HARUS SAMA DENGAN jumlah item di neg_examples.
+- Jika hari itu tidak ada pesan tentang TWS/Suli → pos_count=0, neg_count=0, pos_examples=[], neg_examples=[]
 - Jika ragu positif atau netral → NETRAL (hanya count yang JELAS tentang TWS/Suli)
 - Jika ragu negatif atau netral → NETRAL (hanya count yang JELAS tentang TWS/Suli)
 - Jawab HANYA dengan JSON, tidak ada teks lain`;
@@ -252,11 +250,16 @@ PENTING — BACA BAIK-BAIK:
 
       // Update sentiment_daily and daily_topics for each day
       for (const day of result.days) {
-        const pos = Math.min(parseFloat(day.pos) || 0, 5.0);
-        const neg = Math.min(parseFloat(day.neg) || 0, 5.0);
+        // AI returns counts, we calculate percentage from total messages that day
+        const totalDayMsgs = (byDate[day.date] || []).length;
+        const posCount = parseInt(day.pos_count) || 0;
+        const negCount = parseInt(day.neg_count) || 0;
+        // Calculate percentage: count / total * 100, cap at 5%
+        const pos = totalDayMsgs > 0 ? Math.min(parseFloat(((posCount / totalDayMsgs) * 100).toFixed(2)), 5.0) : 0;
+        const neg = totalDayMsgs > 0 ? Math.min(parseFloat(((negCount / totalDayMsgs) * 100).toFixed(2)), 5.0) : 0;
         const topics = Array.isArray(day.topics) ? day.topics : [];
-        const pos_examples = Array.isArray(day.pos_examples) ? day.pos_examples.slice(0, 5) : [];
-        const neg_examples = Array.isArray(day.neg_examples) ? day.neg_examples.slice(0, 5) : [];
+        const pos_examples = Array.isArray(day.pos_examples) ? day.pos_examples : [];
+        const neg_examples = Array.isArray(day.neg_examples) ? day.neg_examples : [];
         const note = day.note || '';
 
         const { error: e1 } = await sb
@@ -276,7 +279,14 @@ PENTING — BACA BAIK-BAIK:
         }
       }
 
-      const summary = result.days.map(d => `${d.date}: +${d.pos}% -${d.neg}% [${(d.topics || []).length} topics]`).join(', ');
+      const summary = result.days.map(d => {
+        const totalD = (byDate[d.date] || []).length;
+        const pc = parseInt(d.pos_count) || 0;
+        const nc = parseInt(d.neg_count) || 0;
+        const pp = totalD > 0 ? ((pc / totalD) * 100).toFixed(2) : '0';
+        const np = totalD > 0 ? ((nc / totalD) * 100).toFixed(2) : '0';
+        return `${d.date}: +${pc}(${pp}%) -${nc}(${np}%) [${totalD} msgs]`;
+      }).join(', ');
       log.push(`✓ ${batchFrom}→${batchTo}: ${result.days.length} days [${summary}]`);
     }
 
