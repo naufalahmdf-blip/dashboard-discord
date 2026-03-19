@@ -219,21 +219,16 @@ function ManualDataSection({ onSaved, token }) {
     setComplaintLog(['Mengambil pesan dari database chat_messages...']);
 
     try {
-      // Fetch messages from chat_messages table (same source as sentiment analysis)
-      const fetchRes = await fetch('/api/admin/chat-data?action=fetch-messages', { headers: authHeaders });
+      // Fetch messages filtered by keywords server-side (avoids downloading 600K+ rows)
+      const kwEncoded = encodeURIComponent(COMPLAINT_KEYWORDS.join(','));
+      const fetchRes = await fetch(`/api/admin/chat-data?action=fetch-messages&keywords=${kwEncoded}`, { headers: authHeaders });
       const fetchJson = await fetchRes.json();
       if (!fetchRes.ok || !fetchJson.messages) {
         setComplaintLog(prev => [...prev, `⚠ Gagal ambil data: ${fetchJson.error || 'Unknown error'}`]);
         setAnalyzingComplaints(false);
         return;
       }
-      const allMessages = fetchJson.messages;
-      setComplaintLog(prev => [...prev, `Total ${allMessages.length} pesan dari database.`]);
-
-      const filtered = allMessages.filter(m => {
-        const lower = (m.content || '').toLowerCase();
-        return COMPLAINT_KEYWORDS.some(kw => lower.includes(kw));
-      });
+      const filtered = fetchJson.messages;
       setComplaintLog(prev => [...prev, `${filtered.length} pesan terdeteksi mengandung keluhan.`]);
 
       if (filtered.length === 0) {
@@ -588,8 +583,7 @@ export default function AdminTab({ onSaved, token }) {
 
   // ---- Helper: run AI analysis in batches with progress ----
   async function runAnalysisBatched(fromDate, toDate) {
-    const BATCH_DAYS = 7;
-    // Generate all dates
+    // Generate all individual days
     const days = [];
     let cur = new Date(fromDate + 'T00:00:00Z');
     const end = new Date(toDate + 'T00:00:00Z');
@@ -598,33 +592,32 @@ export default function AdminTab({ onSaved, token }) {
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
     const totalDays = days.length;
-    const totalBatches = Math.ceil(totalDays / BATCH_DAYS);
     let analyzed = 0;
 
-    addLog(`Total: ${totalDays} hari, ${totalBatches} batch`);
+    addLog(`Total: ${totalDays} hari (1 AI call per hari)`);
     addLog('');
 
-    for (let b = 0; b < totalBatches; b++) {
-      const batchStart = days[b * BATCH_DAYS];
-      const batchEnd = days[Math.min((b + 1) * BATCH_DAYS - 1, totalDays - 1)];
-      const pct = Math.round(((b + 1) / totalBatches) * 100);
-      setProgress({ current: b + 1, total: totalBatches });
+    // Process each day individually — 1 AI call per day for accurate results
+    for (let d = 0; d < totalDays; d++) {
+      const day = days[d];
+      const pct = Math.round(((d + 1) / totalDays) * 100);
+      setProgress({ current: d + 1, total: totalDays });
 
-      addLog(`[${b + 1}/${totalBatches}] ${batchStart} → ${batchEnd} (${pct}%)...`);
+      addLog(`[${d + 1}/${totalDays}] ${day} (${pct}%)...`);
 
       const res = await fetch('/api/admin/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ dateFrom: batchStart, dateTo: batchEnd, batchSize: BATCH_DAYS }),
+        body: JSON.stringify({ dateFrom: day, dateTo: day, batchSize: 1 }),
       });
 
       let json;
       try { json = await res.json(); } catch {
-        addLog(`  ⚠ Batch ${b + 1} failed: invalid response`);
+        addLog(`  ⚠ ${day} failed: invalid response`);
         continue;
       }
       if (!res.ok || !json.ok) {
-        addLog(`  ⚠ Batch ${b + 1} failed: ${json.error || 'Unknown'}`);
+        addLog(`  ⚠ ${day} failed: ${json.error || 'Unknown'}`);
         continue;
       }
       analyzed += json.analyzed || 0;
@@ -659,66 +652,150 @@ export default function AdminTab({ onSaved, token }) {
 
       await runAnalysisBatched(fromDate, toDate);
 
-      // Step 2: Complaint analysis
-      if (catRows.length > 0) {
-        addLog('');
-        addLog('=== Step 2: Complaint Analysis ===');
-        addLog('Mengambil pesan dari chat_messages...');
-
-        const fetchRes = await fetch('/api/admin/chat-data?action=fetch-messages', { headers: authHeaders });
-        const fetchJson = await fetchRes.json();
-        if (fetchRes.ok && fetchJson.messages) {
-          const allMessages = fetchJson.messages;
-          addLog(`Total ${allMessages.length.toLocaleString()} pesan.`);
-
-          const filtered = allMessages.filter(m => {
-            const lower = (m.content || '').toLowerCase();
-            return COMPLAINT_KEYWORDS.some(kw => lower.includes(kw));
-          });
-          addLog(`${filtered.length} pesan terdeteksi mengandung keluhan.`);
-
-          if (filtered.length > 0) {
-            addLog(`Mengirim ${Math.min(filtered.length, 400)} pesan ke AI...`);
-            const categories = catRows.map(c => ({ theme: c.theme, color: c.color || '#6366f1' }));
-
-            const compRes = await fetch('/api/admin/analyze-complaints', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...authHeaders },
-              body: JSON.stringify({ categories, messages: filtered }),
-            });
-            const compJson = await compRes.json();
-
-            if (compRes.ok && compJson.ok) {
-              const aiMap = {};
-              compJson.categories.forEach(c => { aiMap[c.theme] = c; });
-              const updatedCats = catRows.map(c => {
-                const ai = aiMap[c.theme];
-                if (!ai) return c;
-                const newMsgs = (ai.messages || []).map(m => ({
-                  msg_date: m.date || '', username: m.username || '', content: m.content || '', is_recent: false,
-                }));
-                return { ...c, all_time_count: newMsgs.length, recent_count: 0, messages: newMsgs };
-              });
-              setCatRows(updatedCats);
-              // save() to complaint_categories also inserts complaint_messages
-              await save('complaint_categories', updatedCats);
-              const totalComp = updatedCats.reduce((s, c) => s + (c.messages?.length || 0), 0);
-              addLog(`✓ ${totalComp} keluhan diklasifikasi ke ${updatedCats.length} kategori.`);
-            } else {
-              addLog(`⚠ Complaint analysis error: ${compJson.error || 'Unknown'}`);
-            }
-          } else {
-            addLog('Tidak ada keluhan ditemukan.');
-          }
-        } else {
-          addLog(`⚠ Gagal ambil pesan: ${fetchJson.error || 'Unknown'}`);
-        }
-      } else {
-        addLog('⏭ Complaint analysis dilewati (belum ada kategori).');
-      }
-
       addLog('');
-      addLog('✓ Semua AI analysis selesai!');
+      addLog('✓ Sentiment + Topics selesai!');
+      setStatus('done');
+      onSaved?.();
+    } catch (err) {
+      addLog(`Error: ${err.message}`);
+      setStatus('error');
+    }
+  }
+
+  // ---- Complaint Analysis (reusable core — supports custom date, today, 7d, all) ----
+  async function runComplaintAnalysis(fromDate, toDate) {
+    // 1. Fetch categories
+    const manualRes = await fetch('/api/admin/manual', { headers: authHeaders });
+    const manualJson = await manualRes.json();
+    const fetchedCats = manualJson.complaintCats || [];
+    if (fetchedCats.length === 0) {
+      addLog('⚠ Tambah kategori complaint dulu di tab Complaints.');
+      return false;
+    }
+
+    // 2. Generate all days
+    const days = [];
+    {
+      let cur = new Date(fromDate + 'T00:00:00Z');
+      const end = new Date(toDate + 'T00:00:00Z');
+      while (cur <= end) {
+        days.push(cur.toISOString().slice(0, 10));
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    }
+    addLog(`Date range: ${fromDate} → ${toDate} (${days.length} hari, 1 AI call per hari)`);
+    addLog('');
+
+    // 3. Keywords
+    const DEFAULT_KW = 'rugi, loss, kecewa, bohong, tipu, scam, keluar, exit, marah, nyesel, kapok, zonk, boros, mahal, sia-sia, percuma, menyesal, refund, mundur, resign, berhenti, ditipu, buang uang, ga worth, gak worth, tidak worth, overpriced, kecele, komplain, complaint, complain, jelek, payah, gak berguna, mengecewakan, menipu, penipuan, ngedumel, ngeluh, nyalahin';
+    let kwText;
+    try { kwText = localStorage.getItem('complaint_keywords') || DEFAULT_KW; } catch { kwText = DEFAULT_KW; }
+    const keywords = kwText.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+    const kwEncoded = encodeURIComponent(keywords.join(','));
+
+    // 4. Fetch + AI classify per day
+    const categories = fetchedCats.map(c => ({ theme: c.theme, color: c.color || '#6366f1' }));
+    const allGrouped = {};
+    categories.forEach(c => { allGrouped[c.theme] = []; });
+    let totalFound = 0;
+    let totalClassified = 0;
+
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i];
+      const pct = Math.round(((i + 1) / days.length) * 100);
+      setProgress({ current: i + 1, total: days.length });
+
+      const fetchRes = await fetch(`/api/admin/chat-data?action=fetch-messages&keywords=${kwEncoded}&from=${day}&to=${day}`, { headers: authHeaders });
+      const fetchJson = await fetchRes.json();
+      if (!fetchRes.ok || !fetchJson.messages) {
+        addLog(`[${i + 1}/${days.length}] ⚠ ${day}: ${fetchJson.error || 'Error'}`);
+        continue;
+      }
+      const dayMsgs = fetchJson.messages;
+      if (dayMsgs.length === 0) continue;
+      totalFound += dayMsgs.length;
+
+      const compRes = await fetch('/api/admin/analyze-complaints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ categories, messages: dayMsgs }),
+      });
+      const compJson = await compRes.json();
+
+      if (compRes.ok && compJson.ok) {
+        let dayClassified = 0;
+        compJson.categories.forEach(c => {
+          if (allGrouped[c.theme] && c.messages) {
+            allGrouped[c.theme].push(...c.messages);
+            dayClassified += c.messages.length;
+          }
+        });
+        totalClassified += dayClassified;
+        addLog(`[${i + 1}/${days.length}] ✓ ${day}: ${dayMsgs.length} pesan → ${dayClassified} keluhan (${pct}%)`);
+      } else {
+        addLog(`[${i + 1}/${days.length}] ⚠ ${day}: AI error - ${compJson.error || 'Unknown'}`);
+      }
+    }
+
+    addLog('');
+    addLog(`Total: ${totalFound} pesan diperiksa, ${totalClassified} keluhan terklasifikasi.`);
+
+    // 5. Save accumulated results
+    if (totalClassified > 0) {
+      const updatedCats = fetchedCats.map(c => {
+        const msgs = (allGrouped[c.theme] || []).map(m => ({
+          msg_date: m.date || '', username: m.username || '', content: m.content || '', is_recent: false,
+        }));
+        return { ...c, all_time_count: msgs.length, recent_count: 0, messages: msgs };
+      });
+      addLog('Menyimpan ke database...');
+      await fetch('/api/admin/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ type: 'complaint_categories', rows: updatedCats }),
+      });
+      addLog('✓ Data tersimpan!');
+    }
+    return true;
+  }
+
+  // Refresh All Complaints
+  async function handleRefreshComplaints() {
+    setLog([]);
+    setStatus('analyzing');
+    try {
+      addLog('=== Complaint Analysis (All) ===');
+      const rangeRes = await fetch('/api/admin/chat-data?action=date-range', { headers: authHeaders });
+      const rangeJson = await rangeRes.json();
+      if (!rangeRes.ok || !rangeJson.minDate) {
+        addLog(`⚠ ${rangeJson.error || 'Tidak ada data di chat_messages.'}`);
+        setStatus('error');
+        return;
+      }
+      await runComplaintAnalysis(rangeJson.minDate, rangeJson.maxDate);
+      addLog('');
+      addLog('✓ Complaint analysis selesai!');
+      setStatus('done');
+      onSaved?.();
+    } catch (err) {
+      addLog(`Error: ${err.message}`);
+      setStatus('error');
+    }
+  }
+
+  // Complaint custom date range
+  async function handleComplaintCustom() {
+    if (!dailySentFrom || !dailySentTo) {
+      setLog(['⚠ Pilih date range dulu (From → To)']);
+      return;
+    }
+    setLog([]);
+    setStatus('analyzing');
+    try {
+      addLog(`=== Complaint Analysis (${dailySentFrom} → ${dailySentTo}) ===`);
+      await runComplaintAnalysis(dailySentFrom, dailySentTo);
+      addLog('');
+      addLog('✓ Selesai!');
       setStatus('done');
       onSaved?.();
     } catch (err) {
@@ -817,7 +894,7 @@ export default function AdminTab({ onSaved, token }) {
 
       {/* AI Analysis (Sentiment + Topics — daily) */}
       <div style={{ marginTop: 16, background: '#0a1020', border: '1px solid #1e3a5f', borderRadius: 10, padding: '14px 16px' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#60a5fa', marginBottom: 2 }}>🤖 AI Analysis (Sentiment + Topics + Complaints)</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#60a5fa', marginBottom: 2 }}>🤖 AI Analysis (Sentiment + Topics)</div>
         <div style={{ fontSize: 10, color: '#475569', marginBottom: 10 }}>
           Analisis per hari dari chat_messages. Pilih mode: custom date, hari ini, atau refresh semua.
         </div>
@@ -846,14 +923,54 @@ export default function AdminTab({ onSaved, token }) {
           </button>
         </div>
 
-        {/* Refresh All */}
+        {/* Refresh Sentiment */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
           <button className="btn-action" style={{ padding: '8px 20px', fontSize: 12, background: '#dc2626', borderColor: '#dc2626' }} onClick={handleRefreshAll} disabled={isRunning}>
-            {status === 'analyzing' ? `⏳ ${progress.current}/${progress.total} batch...` : '🔄 Refresh All AI (semua tanggal)'}
+            {status === 'analyzing' ? `⏳ ${progress.current}/${progress.total} batch...` : '🔄 Refresh Sentiment (semua tanggal)'}
           </button>
         </div>
+      </div>
+
+      {/* ===== Complaint Analysis Section ===== */}
+      <div style={{ marginTop: 16, background: '#0a1020', border: '1px solid #92400e', borderRadius: 10, padding: '14px 16px' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 2 }}>📋 Complaint Analysis</div>
+        <div style={{ fontSize: 10, color: '#475569', marginBottom: 10 }}>
+          Analisis keluhan dari chat_messages. Pilih mode: custom date, hari ini, 7 hari, atau refresh semua.
+        </div>
+
+        {/* Quick buttons */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <button className="btn-action" style={{ padding: '8px 20px', fontSize: 12, background: '#059669', borderColor: '#059669' }}
+            onClick={() => { const t = new Date().toISOString().slice(0, 10); setDailySentFrom(t); setDailySentTo(t); }}
+            disabled={isRunning}>
+            📅 Set Hari Ini
+          </button>
+          <button className="btn-action" style={{ padding: '8px 20px', fontSize: 12, background: '#2563eb', borderColor: '#2563eb' }}
+            onClick={() => { const t = new Date(); const f = new Date(t); f.setDate(f.getDate() - 6); setDailySentFrom(f.toISOString().slice(0, 10)); setDailySentTo(t.toISOString().slice(0, 10)); }}
+            disabled={isRunning}>
+            📅 Set 7 Hari
+          </button>
+        </div>
+
+        {/* Date pickers + Run Custom */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="date" value={dailySentFrom} onChange={e => setDailySentFrom(e.target.value)} className="date-input" style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 5, color: '#f1f5f9', padding: '6px 10px', fontSize: 12 }} />
+          <span style={{ color: '#475569', fontSize: 11 }}>→</span>
+          <input type="date" value={dailySentTo} onChange={e => setDailySentTo(e.target.value)} className="date-input" style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 5, color: '#f1f5f9', padding: '6px 10px', fontSize: 12 }} />
+          <button className="btn-action" style={{ padding: '8px 20px', fontSize: 12, background: '#d97706', borderColor: '#d97706' }} onClick={handleComplaintCustom} disabled={isRunning || !dailySentFrom || !dailySentTo}>
+            {status === 'analyzing' ? `⏳ ${progress.current}/${progress.total}...` : '📋 Run Custom Date'}
+          </button>
+        </div>
+
+        {/* Refresh All Complaints */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+          <button className="btn-action" style={{ padding: '8px 20px', fontSize: 12, background: '#dc2626', borderColor: '#dc2626' }} onClick={handleRefreshComplaints} disabled={isRunning}>
+            {status === 'analyzing' ? `⏳ ${progress.current}/${progress.total}...` : '🔄 Refresh All Complaints'}
+          </button>
+        </div>
+
         <div style={{ marginTop: 6, fontSize: 10, color: '#f59e0b', lineHeight: 1.5 }}>
-          ⚠ Refresh All AI hanya bisa dijalankan di server langsung (localhost). Akan timeout jika dijalankan dari Vercel. Hubungi General Ops.
+          ⚠ Refresh hanya bisa dijalankan di server langsung (localhost). Hubungi General Ops.
         </div>
       </div>
 

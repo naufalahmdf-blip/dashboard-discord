@@ -23,11 +23,49 @@ export default async function handler(req, res) {
     }
   }
 
-  // fetch-messages: needs admin
+  // fetch-messages: needs admin — accepts POST with keywords to filter server-side, or GET for legacy
   if (action === 'fetch-messages') {
     const user = requireAdmin(req, res);
     if (!user) return;
     try {
+      // Accept keywords from query param (comma-separated) to filter server-side via SQL
+      const kwParam = req.query.keywords || '';
+      const keywords = kwParam.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+
+      if (keywords.length > 0) {
+        // Supports optional from/to date params to query a specific month chunk (avoids timeout)
+        const dateFrom = req.query.from || null;
+        const dateTo = req.query.to || null;
+
+        const orFilter = keywords.map(kw => `content.ilike.%${kw}%`).join(',');
+        let allData = [], page = 0, pageSize = 1000;
+        while (true) {
+          let query = sb
+            .from('chat_messages')
+            .select('username, msg_datetime, content')
+            .neq('content', 'EMPTY')
+            .neq('content', '')
+            .or(orFilter);
+          if (dateFrom) query = query.gte('msg_datetime', dateFrom);
+          if (dateTo) query = query.lte('msg_datetime', dateTo + 'T23:59:59');
+          query = query.order('msg_datetime', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+          const { data, error } = await query;
+          if (error) return res.status(500).json({ error: error.message });
+          if (!data || data.length === 0) break;
+          allData = allData.concat(data);
+          if (data.length < pageSize) break;
+          page++;
+        }
+        const messages = allData.map(r => ({
+          date: r.msg_datetime ? r.msg_datetime.split('T')[0] : '',
+          username: r.username || '',
+          content: r.content || '',
+        }));
+        return res.json({ ok: true, messages, total: messages.length });
+      }
+
+      // Legacy: no keywords — fetch all (may timeout on large tables)
       let allData = [], page = 0, pageSize = 1000;
       while (true) {
         const { data, error } = await sb
