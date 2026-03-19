@@ -99,28 +99,18 @@ export default async function handler(req, res) {
 
       const prompt = `Kamu adalah analis sentimen & topik komunitas Discord trading crypto Indonesia bernama TWS (The Wolf of Street).
 
-TUGAS 1 - SENTIMEN: hitung PERSENTASE pesan yang POSITIF dan NEGATIF di komunitas TWS.
+TUGAS 1 - SENTIMEN: hitung PERSENTASE pesan yang POSITIF dan NEGATIF terhadap TWS/Suli/komunitas.
 Hitung dari SEMUA pesan (total messages count tertulis di header), bukan hanya sample. Sample hanya untuk referensi konteks.
 
 DEFINISI PENTING:
-- POSITIF = pesan yang menunjukkan optimisme, semangat, apresiasi, cuan, support — baik terhadap market MAUPUN terhadap TWS/Suli/komunitas. Pesan positif TIDAK harus menyebut TWS/Suli.
-- NEGATIF = pesan yang SECARA SPESIFIK mengeluh, kecewa, atau menyerang TWS/Suli/Jonathan/ketua/komunitas. Pesan negatif HARUS merujuk ke TWS/Suli/Jonathan atau kebijakan komunitas.
-- NETRAL = basa-basi biasa ("GM", "GN"), pertanyaan factual, diskusi teknis tanpa emosi.
+- POSITIF = pesan yang SECARA SPESIFIK apresiasi/support/terima kasih ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas. HARUS ada kaitan dengan TWS/Suli/komunitas.
+- NEGATIF = pesan yang SECARA SPESIFIK mengeluh/kecewa/menyerang TWS/Suli/Jonathan/ketua/komunitas. HARUS ada kaitan dengan TWS/Suli/komunitas.
+- NETRAL = SEMUA sisanya. Diskusi market, analisis TA, optimisme BTC, hype coin, cuan/loss dari trading sendiri, "GM", "GN", basa-basi. Ini BUKAN positif meskipun nadanya senang.
 
-=== REFERENSI KALIMAT POSITIF (optimisme, semangat, apresiasi, cuan) ===
-Gunakan contoh-contoh ini sebagai ACUAN untuk mengenali sentimen positif. Kalimat yang MIRIP nada/polanya = POSITIF:
-- "Semangat sampai 2030"
-- "Gw masih hold soalnya percaya fundamental"
-- "Besok new moon semoga ada balik arah buat market..."
-- "hype strong"
-- "happy short"
-- "Saatnya pump?"
-- "Nice langsung running ga ngerasain lose"
-- "ini temen-temen juga pada cuan nih"
-- "hype to the moon"
-- "Saatnya rebound"
-- "Bandarnya hyperliquid kuat banget"
-- "strong juga support hype, btc rebound hype to the moon"
+KUNCI: Baik POSITIF maupun NEGATIF harus TENTANG TWS/Suli/komunitas. Senang karena BTC naik = NETRAL. Senang karena call Suli profit = POSITIF.
+
+=== REFERENSI KALIMAT POSITIF (apresiasi/support ke TWS/Suli/komunitas) ===
+Gunakan contoh-contoh ini sebagai ACUAN. POSITIF = pesan yang memuji/berterima kasih/support TWS/Suli/Jonathan/komunitas:
 - "Udah ges gua udah puas klo sul minta maaf"
 - "harus bersyukur masi ada yang mau ngajarin"
 - "Suli lagi menyala"
@@ -130,31 +120,30 @@ Gunakan contoh-contoh ini sebagai ACUAN untuk mengenali sentimen positif. Kalima
 - "gw yakin si sebenernya banyak yang jago member disini, cuma ketutup roasting aja wkwk"
 - "tq king sl pindah BEP"
 - "Banyak banget analis di sini"
-- "gw ngga tertarik ambil posisi in between for now"
-- "Selama geopolitics blm reda mao ekonomi macro sebagus apa bit coin juga bakl akan trn visit sn next br lihat kondisi lg"
-- "Untung masih short"
-- "Good bews buat Crypto kah"
-- "Market merah gini memang gabisa banyak gerak, Prepare cash terus aja ka buat serok nantinya"
 - "Thats alliright brother, u did a great job"
 - "....tapi msh sering nntn ulang modulnya"
-- "gw cut profit 4977"
-- "Sejauh ini masih OK, itu barusa BO trendline resisten otw 80-an K, SL di 65K"
 - "Jujur, tws banyak bantu gue juga buat refine cara baca market. Jadi ini bukan cuma gue kasih outlook, tapi semacam bentuk terima kasih juga buat tws"
 - "Mangats gez"
 - "Mantap king"
-- "Pump menarik ni"
-- "pump 80k soon, 40k gakbakal kejadian sampe kapanpun"
-- "Tapi kuat bgt ya btc..ga drop dibawah 61"
 - "salut ama ko jonathan, sisi positifnya konsisten"
 - "Iya kita appreciate you and others yg share your hearts here. God bless all bros and sis"
 - "Gas LONG BTC kalau udah otl dari legend, tinggal tunggu waktu capai target"
-- "Go btc 79"
-- "Lets go 72K"
-- "Syukurlah. Pokoknya jangan menyerah, btc turun yah harga diskon"
 - "mantap emang king gw ini"
-- "kalau sampai ww3 kayaknya enga, ini us lagi main catur aja, untuk muter uang lewat militer"
-- "stay in cash teman-teman, lihat war dan krisis kali ini sebagai peluang. big liquidity is coming"
 - "nice setup bro, roi nya gacor. ku setuju TP di area itu karena psikologi number"
+
+=== CONTOH NETRAL (JANGAN hitung sebagai positif/negatif) ===
+Ini NETRAL meskipun nadanya positif/optimis, karena TIDAK tentang TWS/Suli:
+- "hype strong" → NETRAL (hype market, bukan tentang TWS)
+- "happy short" → NETRAL (senang dari trading sendiri)
+- "Saatnya pump?" → NETRAL (prediksi market)
+- "pump 80k soon" → NETRAL (prediksi harga)
+- "hype to the moon" → NETRAL (hype market)
+- "Saatnya rebound" → NETRAL (prediksi market)
+- "Go btc 79" → NETRAL (target harga)
+- "Lets go 72K" → NETRAL (target harga)
+- "gw cut profit 4977" → NETRAL (profit trading sendiri, bukan dari call TWS)
+- "Untung masih short" → NETRAL (profit trading sendiri)
+- "GM", "GN" → NETRAL (basa-basi)
 
 === REFERENSI KALIMAT NEGATIF (keluhan/kecewa ke TWS/Suli) ===
 Gunakan contoh-contoh ini sebagai ACUAN untuk mengenali sentimen negatif. Kalimat yang MIRIP nada/polanya = NEGATIF:
@@ -206,10 +195,7 @@ Gunakan contoh-contoh ini sebagai ACUAN untuk mengenali sentimen negatif. Kalima
 - "Gila yaa bayar mahal mahal malah members nya yg perform"
 - "Coba kalau suli call $PUNCH/SOL, Klo bear 4 tahun floating minus BTC, bisa pakai jurus terupdate"
 
-=== NETRAL (jangan dihitung sebagai pos/neg) ===
-NETRAL = basa-basi tanpa emosi ("GM", "GN", "tes"), pertanyaan factual biasa, link tanpa komentar.
-PENTING: "GM", "GN" = NETRAL. Tapi kalimat dengan EMOSI positif (semangat, optimisme, cuan, hype) = POSITIF.
-Contoh netral: "GM", "GN", "tes mic", link tanpa komentar, "ada yang online?".
+=== REFERENSI KALIMAT NEGATIF sudah di atas ===
 
 TUGAS 2 - TOPIK: identifikasi 3-5 topik paling dominan per hari.
 
@@ -233,20 +219,22 @@ Analisis SETIAP hari dan output JSON:
 }
 
 PENTING — BACA BAIK-BAIK:
-- pos = % pesan POSITIF (optimisme, semangat, cuan, hype, apresiasi) dari TOTAL pesan hari itu. TIDAK harus menyebut TWS/Suli.
-- neg = % pesan NEGATIF (keluhan/kecewa SPESIFIK ke TWS/Suli/Jonathan/komunitas) dari TOTAL pesan hari itu. HARUS merujuk ke TWS/Suli/Jonathan.
-- POSITIF harus SELALU lebih besar dari NEGATIF karena mayoritas member supportif dan optimis. Negatif hanya muncul saat ada drama/kontroversi.
-- RANGE REALISTIS: pos biasanya 2-10%, neg biasanya 0-2%. Hari tanpa drama: pos 3-8%, neg 0-0.5%.
+- pos = % pesan yang APRESIASI/SUPPORT TWS/Suli/Jonathan/komunitas dari TOTAL pesan hari itu. HARUS tentang TWS/Suli.
+- neg = % pesan yang KELUHAN/KECEWA ke TWS/Suli/Jonathan/komunitas dari TOTAL pesan hari itu. HARUS tentang TWS/Suli.
+- Diskusi market biasa (hype, pump, TA, profit trading sendiri) = NETRAL, bukan positif.
+- POSITIF biasanya LEBIH BESAR dari NEGATIF karena member yang support lebih banyak dari yang complain.
+- RANGE REALISTIS: pos biasanya 0.5-3%, neg biasanya 0-1.5%. Hari tanpa drama: pos 0.5-2%, neg 0-0.3%.
 - HITUNG TELITI: pos dan neg HARUS berbeda setiap hari sesuai isi chat, JANGAN copy-paste angka yang sama
-- Pesan dengan nada optimis, semangat, cuan, hype, support = POSITIF (lihat referensi di atas)
-- Pesan keluhan HANYA dihitung NEGATIF jika merujuk TWS/Suli/Jonathan/ketua/king/modul/kelas
+- POSITIF = apresiasi/support/terima kasih SPESIFIK ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas
+- NEGATIF = keluhan/kecewa/serang SPESIFIK ke TWS/Suli/Jonathan/ketua/king/modul/kelas/komunitas
+- Optimisme market, hype coin, profit dari trading sendiri = NETRAL, BUKAN positif
 - topics = array of 3-5 topik dominan (format: "emoji Judul topik"), bahasa Indonesia
-- pos_examples = max 5 contoh pesan positif (KUTIP PERSIS dari chat, sertakan username)
-- neg_examples = max 5 contoh pesan negatif (KUTIP PERSIS dari chat, sertakan username). HARUS merujuk TWS/Suli.
+- pos_examples = max 5 contoh pesan positif (KUTIP PERSIS dari chat, sertakan username). HARUS tentang TWS/Suli/komunitas.
+- neg_examples = max 5 contoh pesan negatif (KUTIP PERSIS dari chat, sertakan username). HARUS tentang TWS/Suli/komunitas.
 - JANGAN masukkan pesan yang sama ke examples di hari berbeda. Setiap hari HARUS contoh UNIK dari chat hari itu saja.
-- Jika hari itu tidak ada keluhan ke TWS/Suli → neg=0, neg_examples=[]
-- Jika ragu positif atau netral → POSITIF (lebih baik over-count positif daripada miss)
-- Jika ragu negatif atau netral → NETRAL (lebih baik under-count negatif)
+- Jika hari itu tidak ada pesan tentang TWS/Suli → pos=0, neg=0, pos_examples=[], neg_examples=[]
+- Jika ragu positif atau netral → NETRAL (hanya count yang JELAS tentang TWS/Suli)
+- Jika ragu negatif atau netral → NETRAL (hanya count yang JELAS tentang TWS/Suli)
 - Jawab HANYA dengan JSON, tidak ada teks lain`;
 
       const completion = await openai.chat.completions.create({
