@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '../lib/auth.js';
 
-const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY);
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
