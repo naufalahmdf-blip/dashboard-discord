@@ -988,6 +988,9 @@ export default function AdminTab({ onSaved, token }) {
         </div>
       )}
 
+      {/* ===== MASTERFILE AI SECTION ===== */}
+      <MasterfileSection token={token} />
+
       {/* ===== MANUAL DATA SECTION ===== */}
       <ManualDataSection onSaved={onSaved} token={token} />
 
@@ -1125,6 +1128,121 @@ function UserManagement({ token }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Masterfile AI (download / upload sentiment-rate.md) ----
+function MasterfileSection({ token }) {
+  const authHeaders = { Authorization: `Bearer ${token}` };
+  const [info, setInfo] = useState(null); // { source, updatedAt, length }
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const fileRef = useRef();
+
+  async function loadInfo() {
+    try {
+      const r = await fetch('/api/admin/masterfile', { headers: authHeaders });
+      const j = await r.json();
+      if (r.ok) setInfo({ source: j.source, updatedAt: j.updatedAt, length: j.length || j.content?.length || 0 });
+      else setInfo({ source: null, updatedAt: null, length: 0, error: j.error });
+    } catch (e) {
+      setInfo({ source: null, updatedAt: null, length: 0, error: e.message });
+    }
+  }
+
+  useEffect(() => { loadInfo(); }, []);
+
+  async function handleDownload() {
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch('/api/admin/masterfile', { headers: authHeaders });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Gagal download');
+      const blob = new Blob([j.content], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'sentiment-rate.md'; a.click();
+      URL.revokeObjectURL(url);
+      setMsg(`✓ Downloaded (${(j.content?.length || 0).toLocaleString()} chars)`);
+    } catch (e) {
+      setMsg(`✗ ${e.message}`);
+    }
+    setBusy(false);
+    setTimeout(() => setMsg(''), 3000);
+  }
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.md')) {
+      if (!confirm('File bukan .md, lanjut upload?')) { fileRef.current.value = ''; return; }
+    }
+    setBusy(true); setMsg('Membaca file...');
+    try {
+      const content = await file.text();
+      if (!content.trim()) throw new Error('File kosong');
+      const r = await fetch('/api/admin/masterfile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ content }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Gagal upload');
+      setMsg(`✓ Tersimpan (${j.length.toLocaleString()} chars)`);
+      await loadInfo();
+    } catch (err) {
+      setMsg(`✗ ${err.message}`);
+    }
+    if (fileRef.current) fileRef.current.value = '';
+    setBusy(false);
+    setTimeout(() => setMsg(''), 4000);
+  }
+
+  return (
+    <div style={{ marginTop: 16, background: '#0a1020', border: '1px solid #4c1d95', borderRadius: 10, padding: '14px 16px' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#a78bfa', marginBottom: 2 }}>📄 Masterfile AI (sentiment-rate.md)</div>
+      <div style={{ fontSize: 10, color: '#475569', marginBottom: 10 }}>
+        Spec referensi positif/negatif yang dipakai AI untuk menghitung sentiment rate. Edit di lokal, lalu upload — perubahan langsung berlaku tanpa redeploy.
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          className="btn-action"
+          style={{ padding: '8px 18px', fontSize: 12, background: '#7c3aed', borderColor: '#7c3aed' }}
+          onClick={handleDownload}
+          disabled={busy}
+        >
+          ⬇ Download .md
+        </button>
+        <input ref={fileRef} type="file" accept=".md,.txt,text/markdown" style={{ display: 'none' }} onChange={handleUpload} />
+        <button
+          className="btn-action"
+          style={{ padding: '8px 18px', fontSize: 12, background: '#059669', borderColor: '#059669' }}
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+        >
+          ⬆ Upload .md
+        </button>
+        {msg && <span style={{ fontSize: 12, color: msg.startsWith('✓') ? '#4ade80' : msg.startsWith('✗') ? '#f87171' : '#94a3b8' }}>{msg}</span>}
+      </div>
+
+      {info && (
+        <div style={{ fontSize: 10, color: '#64748b', marginTop: 10, lineHeight: 1.6 }}>
+          {info.error ? (
+            <span style={{ color: '#f87171' }}>⚠ {info.error}</span>
+          ) : (
+            <>
+              Sumber:{' '}
+              <strong style={{ color: info.source === 'storage' ? '#a78bfa' : '#94a3b8' }}>
+                {info.source === 'storage' ? 'storage (custom)' : 'file bundled (default)'}
+              </strong>
+              {info.updatedAt && <> · Update terakhir: {new Date(info.updatedAt).toLocaleString('id-ID')}</>}
+              {info.length > 0 && <> · {info.length.toLocaleString()} chars</>}
+            </>
+          )}
         </div>
       )}
     </div>

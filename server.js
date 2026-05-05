@@ -10,6 +10,7 @@ import adminAnalyze from './api/admin/analyze.js';
 import adminManual from './api/admin/manual.js';
 import adminAnalyzeComplaints from './api/admin/analyze-complaints.js';
 import adminChatData from './api/admin/chat-data.js';
+import adminMasterfile from './api/admin/masterfile.js';
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,7 +19,10 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
 
 // ---- Supabase (server-side only) ----
-const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const sb = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY
+);
 
 // Shadow accounts loaded from DB (shadow_accounts table)
 
@@ -328,6 +332,8 @@ app.get('/api/admin/manual', requireAuth, requireAdmin, adminManual);
 app.post('/api/admin/manual', requireAuth, requireAdmin, adminManual);
 app.post('/api/admin/analyze-complaints', requireAuth, requireAdmin, adminAnalyzeComplaints);
 app.get('/api/admin/chat-data', requireAuth, adminChatData);
+app.get('/api/admin/masterfile', requireAuth, requireAdmin, adminMasterfile);
+app.post('/api/admin/masterfile', requireAuth, requireAdmin, adminMasterfile);
 
 // ---- SPA fallback ----
 app.get('*', (req, res) => {
